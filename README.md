@@ -33,7 +33,6 @@ Both tools process individual files or entire directory trees, with flexible opt
 
 - 🔄 Process single files or entire directories recursively
 - 📁 Ignore specific directories (venv, **pycache**, etc.)
-- 📄 Ignore specific files or file patterns (wildcards supported)
 - 💾 In-place modification or create cleaned copies
 - 🎯 Custom output directory support
 - ⚡ Batch processing with progress reporting
@@ -89,14 +88,6 @@ python decommentor_2.py my_project/ --in-place
 ```bash
 # Ignore specific directories
 python decommentor_1.py project/ --ignore tests venv __pycache__ docs
-
-# Ignore specific file patterns
-python decommentor_2.py project/ --ignore-files __init__.py setup.py test_*.py
-
-# Combine both
-python decommentor_2.py project/ \
-  --ignore tests venv \
-  --ignore-files __init__.py *_pb2.py test_*.py
 ```
 
 ### Command-Line Options
@@ -107,7 +98,6 @@ python decommentor_2.py project/ \
 | `--output`       | `-o`  | Output directory for cleaned files                     |
 | `--in-place`     | `-i`  | Modify files in place (overwrites originals)           |
 | `--ignore`       | -     | Directory names to ignore (space-separated)            |
-| `--ignore-files` | -     | File patterns to ignore (supports wildcards)           |
 
 **Default ignored directories:**
 
@@ -176,11 +166,10 @@ numbers = [1, 2, 3]
 # Clean entire project, output to new directory
 python decommentor_2.py ./my_project -o ./my_project_cleaned
 
-# Clean project, ignore tests and __init__.py files
+# Clean project, ignoring tests and docs directories
 python decommentor_2.py ./my_project \
   -o ./my_project_cleaned \
-  --ignore tests docs \
-  --ignore-files __init__.py
+  --ignore tests docs
 ```
 
 ### Example 3: In-Place Modification
@@ -217,19 +206,6 @@ Create "skeleton" code for students to document themselves.
 ### 5. Code Analysis
 
 Remove comments to focus purely on code structure during analysis.
-
-## File Patterns (Wildcards)
-
-The `--ignore-files` option supports Unix shell-style wildcards:
-
-| Pattern       | Matches                         |
-| ------------- | ------------------------------- |
-| `*.py`        | All Python files                |
-| `test_*.py`   | Files starting with "test\_"    |
-| `*_test.py`   | Files ending with "\_test.py"   |
-| `__init__.py` | Exact filename match            |
-| `*_pb2.py`    | Protocol buffer generated files |
-| `*config*.py` | Files containing "config"       |
 
 ## Error Handling
 
