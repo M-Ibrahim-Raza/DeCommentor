@@ -8,7 +8,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import List, Set
+from typing import List, Optional, Set
 
 
 class DeCommentor(ast.NodeTransformer):
@@ -19,20 +19,24 @@ class DeCommentor(ast.NodeTransformer):
         if (
             node.body
             and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, (ast.Str, ast.Constant))
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
         ):
             node.body = node.body[1:]
         self.generic_visit(node)
         return node
 
-    def visit_FunctionDef(self, node):
+    def _strip_function(self, node):
         # Remove function docstring
         if (
             node.body
             and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, (ast.Str, ast.Constant))
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
         ):
             node.body = node.body[1:]
+            if not node.body:
+                node.body = [ast.Pass()]
 
         # Remove return type annotation
         node.returns = None
@@ -51,42 +55,24 @@ class DeCommentor(ast.NodeTransformer):
 
         self.generic_visit(node)
         return node
+
+    def visit_FunctionDef(self, node):
+        return self._strip_function(node)
 
     def visit_AsyncFunctionDef(self, node):
-        # Remove async function docstring
-        if (
-            node.body
-            and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, (ast.Str, ast.Constant))
-        ):
-            node.body = node.body[1:]
-
-        # Remove return type annotation
-        node.returns = None
-
-        # Remove argument type annotations
-        for arg in node.args.args:
-            arg.annotation = None
-        for arg in node.args.posonlyargs:
-            arg.annotation = None
-        for arg in node.args.kwonlyargs:
-            arg.annotation = None
-        if node.args.vararg:
-            node.args.vararg.annotation = None
-        if node.args.kwarg:
-            node.args.kwarg.annotation = None
-
-        self.generic_visit(node)
-        return node
+        return self._strip_function(node)
 
     def visit_ClassDef(self, node):
         # Remove class docstring
         if (
             node.body
             and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, (ast.Str, ast.Constant))
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
         ):
             node.body = node.body[1:]
+            if not node.body:
+                node.body = [ast.Pass()]
         self.generic_visit(node)
         return node
 
@@ -105,10 +91,6 @@ class DeCommentor(ast.NodeTransformer):
             # If there's no value (just x: int), remove the statement entirely
             return None
 
-    def visit_arg(self, node):
-        # Remove type annotations from arguments
-        node.annotation = None
-        return node
 
 
 def remove_comments_and_docstrings(source_code: str) -> str:
@@ -223,7 +205,10 @@ def should_ignore_path(path: Path, ignore_dirs: Set[str]) -> bool:
 
 
 def process_file(
-    file_path: Path, output_dir: Path = None, in_place: bool = False
+    file_path: Path,
+    output_dir: Optional[Path] = None,
+    in_place: bool = False,
+    base_dir: Optional[Path] = None,
 ) -> bool:
     """
     Process a single Python file to remove comments, docstrings, and type hints.
@@ -232,6 +217,7 @@ def process_file(
         file_path: Path to the Python file
         output_dir: Output directory for cleaned files
         in_place: If True, modify files in place
+        base_dir: Base directory for computing relative output paths
 
     Returns:
         True if successful, False otherwise
@@ -246,9 +232,10 @@ def process_file(
             output_path = file_path
         else:
             if output_dir:
-                relative_path = file_path.relative_to(
-                    file_path.parents[len(file_path.parents) - 1]
-                )
+                if base_dir is not None:
+                    relative_path = file_path.relative_to(base_dir)
+                else:
+                    relative_path = Path(file_path.name)
                 output_path = output_dir / relative_path
                 output_path.parent.mkdir(parents=True, exist_ok=True)
             else:
@@ -268,7 +255,7 @@ def process_file(
 def process_directory(
     directory: Path,
     ignore_dirs: Set[str],
-    output_dir: Path = None,
+    output_dir: Optional[Path] = None,
     in_place: bool = False,
 ) -> tuple:
     """
@@ -292,14 +279,11 @@ def process_directory(
         # Remove ignored directories from traversal
         dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
-        if should_ignore_path(root_path, ignore_dirs):
-            continue
-
         for file in files:
             if file.endswith(".py"):
                 file_path = root_path / file
 
-                if process_file(file_path, output_dir, in_place):
+                if process_file(file_path, output_dir, in_place, base_dir=directory):
                     success_count += 1
                 else:
                     fail_count += 1
@@ -374,9 +358,13 @@ Examples:
         sys.exit(1)
 
     if args.in_place:
-        response = input(
-            "WARNING: This will modify files in place. Continue? (yes/no): "
-        )
+        try:
+            response = input(
+                "WARNING: This will modify files in place. Continue? (yes/no): "
+            )
+        except EOFError:
+            print("Non-interactive environment detected. Aborting in-place modification.")
+            sys.exit(1)
         if response.lower() not in ("yes", "y"):
             print("Aborted.")
             sys.exit(0)
