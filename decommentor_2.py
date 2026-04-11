@@ -255,6 +255,7 @@ def process_file(
 def process_directory(
     directory: Path,
     ignore_dirs: Set[str],
+    ignore_files: Set[str],
     output_dir: Optional[Path] = None,
     in_place: bool = False,
 ) -> tuple:
@@ -280,7 +281,7 @@ def process_directory(
         dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
         for file in files:
-            if file.endswith(".py"):
+            if file.endswith(".py") and file not in ignore_files:
                 file_path = root_path / file
 
                 if process_file(file_path, output_dir, in_place, base_dir=directory):
@@ -308,6 +309,9 @@ Examples:
   
   # Ignore specific directories
   python script.py project/ --ignore tests venv __pycache__
+
+  # Ignore specific files
+  python script.py project/ --ignore-files setup.py conftest.py
         """,
     )
 
@@ -343,11 +347,19 @@ Examples:
         help="Directory names to ignore (default: venv __pycache__ .git .tox node_modules .pytest_cache)",
     )
 
+    parser.add_argument(
+        "--ignore-files",
+        nargs="+",
+        default=[],
+        help="File names to ignore (e.g., setup.py conftest.py)",
+    )
+
     args = parser.parse_args()
 
     input_path = Path(args.path)
     output_dir = Path(args.output) if args.output else None
     ignore_dirs = set(args.ignore)
+    ignore_files = set(args.ignore_files)
 
     if not input_path.exists():
         print(f"Error: Path '{input_path}' does not exist")
@@ -370,12 +382,18 @@ Examples:
             sys.exit(0)
 
     print(f"Ignoring directories: {', '.join(sorted(ignore_dirs))}")
+    if ignore_files:
+        print(f"Ignoring files: {', '.join(sorted(ignore_files))}")
     print()
 
     if input_path.is_file():
         if input_path.suffix != ".py":
             print("Error: File must be a Python file (.py)")
             sys.exit(1)
+
+        if input_path.name in ignore_files:
+            print(f"Skipping ignored file: {input_path}")
+            sys.exit(0)
 
         success = process_file(input_path, output_dir, args.in_place)
         if success:
@@ -387,7 +405,7 @@ Examples:
     elif input_path.is_dir():
         print(f"Processing directory: {input_path}")
         success_count, fail_count = process_directory(
-            input_path, ignore_dirs, output_dir, args.in_place
+            input_path, ignore_dirs, ignore_files, output_dir, args.in_place
         )
 
         print(f"\nCompleted:")
